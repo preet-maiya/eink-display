@@ -55,7 +55,7 @@ def set_settings(key: str, value) -> None:
 
 def get_all_settings() -> dict:
     result = {}
-    for key in ("widgets", "addresses", "meal_plan", "portfolio", "integrations", "schedule"):
+    for key in ("widgets", "addresses", "meal_plan", "portfolio", "integrations", "schedule", "display"):
         result[key] = get_settings(key)
     return result
 

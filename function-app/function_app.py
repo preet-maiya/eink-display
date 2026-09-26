@@ -166,6 +166,7 @@ def render(req: func.HttpRequest) -> func.HttpResponse:
     battery_str = req.params.get("battery", "")
     battery_pct = int(battery_str) if battery_str.isdigit() else None
     widget_override = req.params.get("widget", "")
+    _store_indoor(req.params.get("t_in", ""), req.params.get("rh_in", ""))
 
     settings = table_ops.get_all_settings()
     widgets_cfg = settings.get("widgets", {})
@@ -205,6 +206,33 @@ def render(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(bmp, mimetype="image/bmp", status_code=200)
 
 
+def _store_indoor(t_str: str, rh_str: str) -> None:
+    """Cache the device's SHT40 reading (°C, %RH) for the weather widget."""
+    try:
+        temp_c = float(t_str) if t_str else None
+        rh = float(rh_str) if rh_str else None
+    except ValueError:
+        return
+    if temp_c is None and rh is None:
+        return
+    try:
+        table_ops.set_cache("indoor", {"temp_c": temp_c, "humidity_pct": rh})
+    except Exception as e:
+        logging.error("indoor cache write failed: %s", e)
+
+
+def _fresh_indoor(max_age_min: int = 60):
+    """Latest indoor reading, or None if the sensor hasn't reported recently."""
+    cache = table_ops.get_cache("indoor")
+    try:
+        ts = datetime.fromisoformat(cache["updated_at"].replace("Z", "+00:00"))
+    except (KeyError, ValueError):
+        return None
+    if datetime.now(ts.tzinfo) - ts > timedelta(minutes=max_age_min):
+        return None
+    return cache.get("data")
+
+
 # ─── HTTP: settings endpoint (SWA-authenticated) ─────────────────────────────
 
 @app.route(route="settings", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET", "POST"])
@@ -222,7 +250,7 @@ def settings_api(req: func.HttpRequest) -> func.HttpResponse:
         logging.info("settings POST body keys: %s", list(body.keys()))
 
         errors = {}
-        for key in ("widgets", "addresses", "meal_plan", "portfolio", "integrations", "schedule"):
+        for key in ("widgets", "addresses", "meal_plan", "portfolio", "integrations", "schedule", "display"):
             if key in body:
                 try:
                     logging.info("saving key: %s", key)
@@ -261,7 +289,9 @@ def _render_widget(
     kw = dict(updated_at=updated_str, battery_pct=battery_pct,
               rotation_idx=rotation_idx, total_widgets=total)
     if name == "weather":
-        return w_weather.render(data, **kw)
+        unit = (settings.get("display") or {}).get("temp_unit", "F")
+        indoor = _fresh_indoor()
+        return w_weather.render(data, temp_unit=unit, indoor=indoor, **kw)
     if name == "calendar":
         return w_calendar.render(data, **kw)
     if name == "meal_plan":

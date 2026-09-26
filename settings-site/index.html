@@ -211,6 +211,19 @@
         <button class="btn" onclick="saveWidgets()">Save</button>
         <span id="widgets-status" class="status"></span>
       </div>
+
+      <div class="section-title" style="margin-top:32px">Units</div>
+      <div class="field">
+        <label class="fl">Temperature</label>
+        <select id="temp-unit">
+          <option value="F">Fahrenheit (°F)</option>
+          <option value="C">Celsius (°C)</option>
+        </select>
+      </div>
+      <div class="save-row">
+        <button class="btn" onclick="saveDisplay()">Save</button>
+        <span id="display-status" class="status"></span>
+      </div>
     </div>
 
     <!-- Addresses -->
@@ -393,6 +406,7 @@ async function loadSettings() {
 
 function renderAll() {
   renderWidgetList();
+  renderDisplay();
   renderAddresses();
   renderIntegrations();
   renderMealPlan();
@@ -547,6 +561,16 @@ function saveWidgets() {
     .filter(li => li.querySelector("input[type=checkbox]").checked)
     .map(li => li.dataset.key);
   saveSection("widgets", { enabled }, "widgets-status");
+}
+
+// ── Display / units ───────────────────────────────────────────────────────
+
+function renderDisplay() {
+  document.getElementById("temp-unit").value = (settings.display || {}).temp_unit || "F";
+}
+
+function saveDisplay() {
+  saveSection("display", { temp_unit: v("temp-unit") }, "display-status");
 }
 
 // ── Addresses ─────────────────────────────────────────────────────────────

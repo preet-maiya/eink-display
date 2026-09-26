@@ -29,12 +29,21 @@ def _wmo(code: int) -> tuple[str, str]:
     return WMO_CONDITION.get(code, ("—", "sun"))
 
 
+def _to_unit(temp_f: Optional[float], unit: str) -> Optional[float]:
+    """Cached temps are °F; convert to °C when requested."""
+    if temp_f is None:
+        return None
+    return (temp_f - 32) * 5 / 9 if unit == "C" else temp_f
+
+
 def render(
     data: Optional[dict],
     updated_at: str,
     battery_pct: Optional[int],
     rotation_idx: int,
     total_widgets: int,
+    temp_unit: str = "F",
+    indoor: Optional[dict] = None,
 ) -> bytes:
     img = Image.new("L", (W, H), 255)
     draw = ImageDraw.Draw(img)
@@ -50,11 +59,11 @@ def render(
     cur = data.get("current", {})
     forecast = data.get("forecast", [])
 
-    temp_f = cur.get("temp_f")
+    temp = _to_unit(cur.get("temp_f"), temp_unit)
     code = cur.get("weathercode", 0)
-    hi = cur.get("high_f")
-    lo = cur.get("low_f")
-    feels_like = cur.get("feels_like_f")
+    hi = _to_unit(cur.get("high_f"), temp_unit)
+    lo = _to_unit(cur.get("low_f"), temp_unit)
+    feels_like = _to_unit(cur.get("feels_like_f"), temp_unit)
     wind_mph = cur.get("wind_mph")
     wind_dir = cur.get("wind_dir", "")
     humidity = cur.get("humidity_pct")
@@ -75,14 +84,14 @@ def render(
     draw_weather_icon(draw, icon_cx, icon_cy, icon_size, icon_type)
 
     # ── Temp ──────────────────────────────────────────────────────────────────
-    temp_str = f"{round(temp_f)}°" if temp_f is not None else "—°"
+    temp_str = f"{round(temp)}°" if temp is not None else "—°"
     ty_temp = CONTENT_TOP - 4
     draw.text((LEFT_TEXT_X, ty_temp), temp_str, font=font_display(112), fill=0, anchor="lt")
 
     cond_y = ty_temp + 116
     draw.text((LEFT_TEXT_X, cond_y), cond_text, font=font_mono(17), fill=0, anchor="lt")
 
-    hi_lo = f"H {round(hi)}°   L {round(lo)}°" if hi and lo else "—"
+    hi_lo = f"H {round(hi)}°   L {round(lo)}°" if hi is not None and lo is not None else "—"
     draw.text((LEFT_TEXT_X, cond_y + 26), hi_lo, font=font_mono(14), fill=0, anchor="lt")
 
     # ── Detail rows ───────────────────────────────────────────────────────────
@@ -105,6 +114,17 @@ def render(
         draw.text((LEFT_TEXT_X, sun_y), f"Rise {sunrise}", font=mono13, fill=0, anchor="lt")
     if sunset:
         draw.text((col2_x, sun_y), f"Set  {sunset}", font=mono13, fill=0, anchor="lt")
+
+    # Row 3: indoor (SHT40 on the device, reported in °C)
+    indoor = indoor or {}
+    in_c = indoor.get("temp_c")
+    in_rh = indoor.get("humidity_pct")
+    in_y = sun_y + 24
+    if in_c is not None:
+        in_temp = _to_unit(in_c * 9 / 5 + 32, temp_unit)
+        draw.text((LEFT_TEXT_X, in_y), f"Indoor {round(in_temp)}°", font=mono13, fill=0, anchor="lt")
+    if in_rh is not None:
+        draw.text((col2_x, in_y), f"In RH {round(in_rh)}%", font=mono13, fill=0, anchor="lt")
 
     # ── Vertical divider ──────────────────────────────────────────────────────
     draw_vline(draw, DIVIDER_X)
@@ -136,9 +156,9 @@ def render(
                 _wmo(day.get("weathercode", 0))[1],
             )
 
-            fc_hi = day.get("high_f")
-            fc_lo = day.get("low_f")
-            fc_temp = f"{round(fc_hi)}/{round(fc_lo)}" if fc_hi and fc_lo else "—"
+            fc_hi = _to_unit(day.get("high_f"), temp_unit)
+            fc_lo = _to_unit(day.get("low_f"), temp_unit)
+            fc_temp = f"{round(fc_hi)}/{round(fc_lo)}" if fc_hi is not None and fc_lo is not None else "—"
             temp_y = icon_top + FC_ICON + 10
             draw.text((col_cx, temp_y), fc_temp, font=font_mono(13), fill=0, anchor="mt")
 
