@@ -76,6 +76,10 @@
     padding: 8px 10px; font-family: var(--font); font-size: 13px;
     background: #fff; color: var(--text); appearance: none; cursor: pointer;
   }
+  .meal-pick select {
+    padding-right: 28px;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23666'/%3E%3C/svg%3E") no-repeat right 10px center;
+  }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .hint { font-size: 11px; color: var(--subtle); margin-top: 6px; line-height: 1.5; }
@@ -133,6 +137,9 @@
   .grocery-items { display: flex; flex-direction: column; gap: 5px; }
   .grocery-row { display: flex; gap: 6px; align-items: center; }
   .grocery-row input { flex: 1; padding: 5px 8px; font-size: 12px; }
+  .meal-pick { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .menu-item-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .menu-item-name-row input { flex: 1; font-weight: 700; }
 
   /* ── Portfolio ─────────────────────────────────────────────────────────── */
   .port-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: center; }
@@ -193,6 +200,7 @@
     <button class="nav-item" onclick="showSection('addresses',this)">Addresses</button>
     <button class="nav-item" onclick="showSection('integrations',this)">Calendar</button>
     <button class="nav-item" onclick="showSection('meal-plan',this)">Meal Plan</button>
+    <button class="nav-item" onclick="showSection('menu-items',this)">Menu Items</button>
     <button class="nav-item" onclick="showSection('portfolio',this)">Portfolio</button>
 
     <span class="nav-label">System</span>
@@ -271,10 +279,23 @@
     <!-- Meal Plan -->
     <div class="section" id="sec-meal-plan">
       <div class="section-title">Weekly Meal Plan</div>
+      <p class="hint" style="margin-bottom:16px">Pick a saved dish from <strong>Menu Items</strong> — its grocery list is added automatically. Choose "Custom…" to type a one-off.</p>
       <div id="meal-days"></div>
       <div class="save-row">
         <button class="btn" onclick="saveMealPlan()">Save</button>
         <span id="meal-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Menu Items -->
+    <div class="section" id="sec-menu-items">
+      <div class="section-title">Menu Items</div>
+      <p class="hint" style="margin-bottom:16px">Saved dishes appear in the Weekly Meal Plan dropdown. Grocery items here are copied into a day when you pick the dish.</p>
+      <div id="menu-items"></div>
+      <button class="btn ghost" onclick="addMenuItem()">+ Add menu item</button>
+      <div class="save-row">
+        <button class="btn" onclick="saveMenuItems()">Save</button>
+        <span id="menu-items-status" class="status"></span>
       </div>
     </div>
 
@@ -410,6 +431,7 @@ function renderAll() {
   renderAddresses();
   renderIntegrations();
   renderMealPlan();
+  renderMenuItems();
   renderPortfolio();
   renderSchedule();
 }
@@ -505,8 +527,10 @@ async function saveSection(key, data, statusId) {
     if (!r.ok || body.ok === false) throw new Error(body.error || r.status);
     el.textContent = "Saved ✓"; el.className = "status ok";
     setTimeout(() => { el.textContent = ""; }, 3000);
+    return true;
   } catch (e) {
     el.textContent = "Error: " + e.message; el.className = "status err";
+    return false;
   }
 }
 
@@ -615,7 +639,10 @@ function renderMealPlan() {
     div.innerHTML = `
       <div class="meal-day-header">
         <span class="meal-day-label">${DAY_LABELS[i]}</span>
-        <input type="text" id="meal-${key}" value="${esc(day.dinner||'')}" placeholder="Dinner…">
+        <div class="meal-pick">
+          <select id="meal-sel-${key}" onchange="onMealSelect('${key}')"></select>
+          <input type="text" id="meal-${key}" value="${esc(day.dinner||'')}" placeholder="Custom dinner…" style="display:none">
+        </div>
       </div>
       <div class="grocery-section">
         <div class="grocery-label-row">Grocery items</div>
@@ -624,7 +651,98 @@ function renderMealPlan() {
       </div>`;
     container.appendChild(div);
     for (const item of (day.grocery || [])) addGroceryRow(key, item);
+    fillMealSelect(key, day.dinner || "");
   }
+}
+
+function menuItems() {
+  return Array.isArray(settings.menu_items) ? settings.menu_items : [];
+}
+
+// Rebuild a day's dropdown from saved menu items, keeping `current` selected.
+// A dinner not in the saved list is shown via the Custom text box.
+function fillMealSelect(key, current) {
+  const sel = document.getElementById("meal-sel-" + key);
+  const custom = document.getElementById("meal-" + key);
+  const names = menuItems().map(m => m.name);
+  sel.innerHTML = `<option value="">— None —</option>`
+    + names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("")
+    + `<option value="__custom__">Custom…</option>`;
+  if (!current) sel.value = "";
+  else if (names.includes(current)) sel.value = current;
+  else { sel.value = "__custom__"; custom.value = current; }
+  custom.style.display = sel.value === "__custom__" ? "" : "none";
+}
+
+function refreshMealSelects() {
+  for (const key of DAY_KEYS) {
+    if (document.getElementById("meal-sel-" + key)) fillMealSelect(key, mealValue(key));
+  }
+}
+
+function mealValue(key) {
+  const sel = document.getElementById("meal-sel-" + key);
+  if (!sel) return "";
+  return sel.value === "__custom__" ? (document.getElementById("meal-" + key).value || "").trim() : sel.value;
+}
+
+function onMealSelect(key) {
+  const sel = document.getElementById("meal-sel-" + key);
+  const custom = document.getElementById("meal-" + key);
+  const isCustom = sel.value === "__custom__";
+  custom.style.display = isCustom ? "" : "none";
+  if (isCustom) { custom.focus(); return; }
+  // Merge the dish's grocery items into the day, skipping duplicates.
+  const item = menuItems().find(m => m.name === sel.value);
+  if (!item) return;
+  const have = new Set([...document.querySelectorAll(`#grocery-list-${key} input`)]
+    .map(i => i.value.trim().toLowerCase()).filter(Boolean));
+  for (const g of (item.grocery || [])) {
+    if (!have.has(g.toLowerCase())) { addGroceryRow(key, g); have.add(g.toLowerCase()); }
+  }
+}
+
+// ── Menu Items ────────────────────────────────────────────────────────────
+
+function renderMenuItems() {
+  document.getElementById("menu-items").innerHTML = "";
+  menuItems().forEach(m => addMenuItemData(m.name, m.grocery || []));
+}
+
+function addMenuItem() {
+  const div = addMenuItemData("", []);
+  div.querySelector(".menu-item-name-row input").focus();
+}
+
+let menuItemSeq = 0;
+function addMenuItemData(name, grocery) {
+  const id = "mi-" + (menuItemSeq++);
+  const div = document.createElement("div");
+  div.className = "meal-day menu-item";
+  div.innerHTML = `
+    <div class="menu-item-name-row">
+      <input type="text" value="${esc(name)}" placeholder="Dish name…">
+      <button class="btn-x" title="Delete dish" onclick="this.closest('.menu-item').remove()">✕</button>
+    </div>
+    <div class="grocery-section">
+      <div class="grocery-label-row">Grocery items</div>
+      <div class="grocery-items" id="grocery-list-${id}"></div>
+      <button class="btn ghost" style="margin-top:4px" onclick="addGroceryItem('${id}')">+ Add item</button>
+    </div>`;
+  document.getElementById("menu-items").appendChild(div);
+  for (const g of grocery) addGroceryRow(id, g);
+  return div;
+}
+
+async function saveMenuItems() {
+  const seen = new Set();
+  const items = [...document.querySelectorAll("#menu-items .menu-item")].map(div => ({
+    name: div.querySelector(".menu-item-name-row input").value.trim(),
+    grocery: [...div.querySelectorAll(".grocery-items input")].map(i => i.value.trim()).filter(Boolean),
+  })).filter(m => m.name && !seen.has(m.name.toLowerCase()) && seen.add(m.name.toLowerCase()));
+  if (!await saveSection("menu_items", items, "menu-items-status")) return;
+  settings.menu_items = items;
+  refreshMealSelects();
 }
 
 function addGroceryItem(key) {
@@ -645,7 +763,7 @@ function saveMealPlan() {
   const plan = {};
   for (const key of DAY_KEYS) {
     plan[key] = {
-      dinner: (document.getElementById("meal-" + key)?.value || "").trim(),
+      dinner: mealValue(key),
       grocery: [...document.querySelectorAll(`#grocery-list-${key} input`)].map(i => i.value.trim()).filter(Boolean),
     };
   }

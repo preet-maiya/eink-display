@@ -239,7 +239,7 @@ def settings_api(req: func.HttpRequest) -> func.HttpResponse:
         logging.info("settings POST body keys: %s", list(body.keys()))
 
         errors = {}
-        for key in ("widgets", "addresses", "meal_plan", "portfolio", "integrations", "schedule", "display"):
+        for key in ("widgets", "addresses", "meal_plan", "menu_items", "portfolio", "integrations", "schedule", "display"):
             if key in body:
                 try:
                     logging.info("saving key: %s", key)
