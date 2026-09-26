@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fridge Dashboard</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --surface: #fff;
+    --border: #d8d8d8;
+    --text: #111;
+    --subtle: #666;
+    --accent: #000;
+    --sidebar-w: 176px;
+    --right-w: 360px;
+    --font: "IBM Plex Mono", monospace;
+    --radius: 4px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; font-family: var(--font); font-size: 14px; color: var(--text); background: var(--bg); }
+
+  /* ── App shell ─────────────────────────────────────────────────────────── */
+  .shell { display: grid; grid-template-columns: var(--sidebar-w) 1fr var(--right-w); grid-template-rows: 52px 1fr; height: 100vh; }
+
+  /* ── Header ────────────────────────────────────────────────────────────── */
+  .header {
+    grid-column: 1 / -1; grid-row: 1;
+    display: flex; align-items: center; padding: 0 20px;
+    border-bottom: 1px solid var(--border); background: var(--surface);
+    gap: 12px;
+  }
+  .header h1 { font-size: 15px; font-weight: 700; letter-spacing: 0.02em; }
+  .header .sub { font-size: 11px; color: var(--subtle); }
+
+  /* ── Left sidebar nav ──────────────────────────────────────────────────── */
+  .sidebar {
+    grid-column: 1; grid-row: 2;
+    border-right: 1px solid var(--border); background: var(--surface);
+    display: flex; flex-direction: column; padding: 12px 8px; gap: 2px;
+    overflow-y: auto;
+  }
+  .nav-label {
+    font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+    color: var(--subtle); padding: 8px 8px 4px; margin-top: 8px;
+  }
+  .nav-label:first-child { margin-top: 0; }
+  .nav-item {
+    display: block; width: 100%; text-align: left;
+    background: none; border: none; border-radius: var(--radius);
+    padding: 8px 10px; font-family: var(--font); font-size: 13px;
+    color: var(--subtle); cursor: pointer;
+  }
+  .nav-item:hover { background: var(--bg); color: var(--text); }
+  .nav-item.active { background: var(--accent); color: #fff; }
+
+  /* ── Main content ──────────────────────────────────────────────────────── */
+  .main {
+    grid-column: 2; grid-row: 2;
+    overflow-y: auto; padding: 28px 32px;
+  }
+  .section { display: none; max-width: 580px; }
+  .section.active { display: block; }
+  .section-title { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; margin-bottom: 20px; }
+
+  /* ── Form elements ─────────────────────────────────────────────────────── */
+  .field { margin-bottom: 16px; }
+  .field label, label.fl { display: block; font-size: 11px; color: var(--subtle); margin-bottom: 5px; letter-spacing: 0.05em; }
+  input[type=text], input[type=number], textarea {
+    width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 10px; font-family: var(--font); font-size: 13px; background: #fff; color: var(--text);
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  select {
+    width: 100%; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px 10px; font-family: var(--font); font-size: 13px;
+    background: #fff; color: var(--text); appearance: none; cursor: pointer;
+  }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hint { font-size: 11px; color: var(--subtle); margin-top: 6px; line-height: 1.5; }
+  .save-row { margin-top: 20px; display: flex; align-items: center; gap: 14px; }
+  .btn {
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+    padding: 9px 18px; font-family: var(--font); font-size: 12px; cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+  .btn:hover { opacity: 0.8; }
+  .btn.sec { background: none; color: var(--accent); border: 1px solid var(--border); }
+  .btn.sm { padding: 6px 12px; font-size: 11px; }
+  .btn.ghost {
+    background: none; color: var(--subtle); border: 1px dashed var(--border);
+    width: 100%; margin-top: 6px; font-size: 11px; padding: 6px;
+  }
+  .btn.ghost:hover { color: var(--text); border-color: var(--accent); }
+  .status { font-size: 11px; color: var(--subtle); }
+  .status.ok { color: #2a7a2a; }
+  .status.err { color: #900; }
+  .btn-x { background: none; border: none; color: var(--subtle); cursor: pointer; font-size: 15px; padding: 0 4px; flex-shrink: 0; }
+  .btn-x:hover { color: #900; }
+
+  /* ── Widget list ───────────────────────────────────────────────────────── */
+  .widget-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .widget-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: var(--radius); background: #fff; cursor: grab; user-select: none;
+  }
+  .widget-item.dragging { opacity: 0.35; }
+  .widget-item.drag-over { border-color: var(--accent); }
+  .drag-handle { color: #ccc; font-size: 16px; flex-shrink: 0; }
+  .widget-name { flex: 1; font-size: 13px; }
+  .reorder-btns { display: flex; flex-direction: column; gap: 2px; }
+  .reorder-btns button {
+    background: none; color: var(--subtle); border: 1px solid var(--border);
+    border-radius: 2px; padding: 0 5px; font-size: 10px; line-height: 16px; cursor: pointer;
+  }
+  .reorder-btns button:hover { background: var(--bg); }
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-track { position: absolute; inset: 0; background: #ccc; border-radius: 10px; cursor: pointer; transition: background .2s; }
+  .toggle input:checked + .toggle-track { background: var(--accent); }
+  .toggle-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: transform .2s; pointer-events: none; }
+  .toggle input:checked ~ .toggle-thumb { transform: translateX(16px); }
+
+  /* ── Meal plan ─────────────────────────────────────────────────────────── */
+  .meal-day { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+  .meal-day-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .meal-day-label { font-weight: 700; font-size: 12px; min-width: 76px; }
+  .meal-day-header input { flex: 1; }
+  .grocery-section { margin-top: 8px; }
+  .grocery-label-row { font-size: 10px; color: var(--subtle); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 5px; }
+  .grocery-items { display: flex; flex-direction: column; gap: 5px; }
+  .grocery-row { display: flex; gap: 6px; align-items: center; }
+  .grocery-row input { flex: 1; padding: 5px 8px; font-size: 12px; }
+
+  /* ── Portfolio ─────────────────────────────────────────────────────────── */
+  .port-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; align-items: center; }
+  .port-header { display: grid; grid-template-columns: 1fr 1fr auto; gap: 6px; margin-bottom: 4px; }
+  .port-header span { font-size: 10px; color: var(--subtle); letter-spacing: 0.1em; text-transform: uppercase; padding: 0 2px; }
+
+  /* ── Right panel ───────────────────────────────────────────────────────── */
+  .right-panel {
+    grid-column: 3; grid-row: 2;
+    border-left: 1px solid var(--border); background: var(--surface);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .panel-block { padding: 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .panel-block:last-child { border-bottom: none; flex: 1; overflow-y: auto; }
+  .panel-title { font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--subtle); margin-bottom: 10px; }
+  .preview-frame { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #f5f5f5; margin-top: 10px; }
+  .preview-placeholder { aspect-ratio: 800/480; display: flex; align-items: center; justify-content: center; color: var(--subtle); font-size: 11px; }
+  .preview-frame img { display: block; width: 100%; image-rendering: pixelated; }
+  .preview-hint { font-size: 10px; color: var(--subtle); margin-top: 6px; }
+  .token-row { display: flex; gap: 6px; margin-bottom: 8px; }
+  .token-row input { flex: 1; font-size: 12px; padding: 7px 9px; }
+  .btn-row { display: flex; gap: 6px; }
+  .btn-row .btn { flex: 1; }
+  pre.refresh-out {
+    display: none; margin-top: 10px; font-size: 10px; background: var(--bg);
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px; white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+  }
+
+  /* ── Mobile ────────────────────────────────────────────────────────────── */
+  @media (max-width: 800px) {
+    .shell { grid-template-columns: 1fr; grid-template-rows: 52px auto 1fr; height: auto; }
+    html, body { overflow: auto; }
+    .sidebar { grid-column: 1; grid-row: 2; flex-direction: row; flex-wrap: wrap; border-right: none; border-bottom: 1px solid var(--border); padding: 8px; overflow-x: auto; }
+    .nav-label { display: none; }
+    .nav-item { white-space: nowrap; }
+    .main { grid-column: 1; grid-row: 3; padding: 20px 16px; }
+    .right-panel { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="shell" id="app" style="display:none">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header class="header">
+    <h1>Fridge Dashboard</h1>
+    <span class="sub">Settings sync on next device refresh (≤10 min)</span>
+  </header>
+
+  <!-- ── Sidebar nav ────────────────────────────────────────────────────── -->
+  <nav class="sidebar">
+    <span class="nav-label">Display</span>
+    <button class="nav-item active" onclick="showSection('widgets',this)">Widgets</button>
+
+    <span class="nav-label">Data</span>
+    <button class="nav-item" onclick="showSection('addresses',this)">Addresses</button>
+    <button class="nav-item" onclick="showSection('integrations',this)">Calendar</button>
+    <button class="nav-item" onclick="showSection('meal-plan',this)">Meal Plan</button>
+    <button class="nav-item" onclick="showSection('portfolio',this)">Portfolio</button>
+
+    <span class="nav-label">System</span>
+    <button class="nav-item" onclick="showSection('schedule',this)">Schedule</button>
+  </nav>
+
+  <!-- ── Main content ───────────────────────────────────────────────────── -->
+  <main class="main">
+
+    <!-- Widgets -->
+    <div class="section active" id="sec-widgets">
+      <div class="section-title">Widgets</div>
+      <p class="hint" style="margin-bottom:16px">Drag or use ▲▼ to reorder. Toggle to enable/disable.</p>
+      <ul class="widget-list" id="widget-list"></ul>
+      <div class="save-row">
+        <button class="btn" onclick="saveWidgets()">Save</button>
+        <span id="widgets-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Addresses -->
+    <div class="section" id="sec-addresses">
+      <div class="section-title">Addresses</div>
+      <p class="hint" style="margin-bottom:16px">
+        Required for weather + commute. Get coordinates: <strong>Google Maps → right-click your location → first line shows lat, lon</strong>.
+      </p>
+      <div class="grid2">
+        <div>
+          <div class="field"><label class="fl">Home label</label><input type="text" id="home-label" placeholder="Home"></div>
+          <div class="row2">
+            <div class="field"><label class="fl">Latitude</label><input type="text" id="home-lat" placeholder="37.7749"></div>
+            <div class="field"><label class="fl">Longitude</label><input type="text" id="home-lon" placeholder="-122.4194"></div>
+          </div>
+        </div>
+        <div>
+          <div class="field"><label class="fl">Work label</label><input type="text" id="work-label" placeholder="Work"></div>
+          <div class="row2">
+            <div class="field"><label class="fl">Latitude</label><input type="text" id="work-lat" placeholder="37.7749"></div>
+            <div class="field"><label class="fl">Longitude</label><input type="text" id="work-lon" placeholder="-122.4194"></div>
+          </div>
+        </div>
+      </div>
+      <div class="save-row">
+        <button class="btn" onclick="saveAddresses()">Save</button>
+        <span id="addresses-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Integrations / Calendar -->
+    <div class="section" id="sec-integrations">
+      <div class="section-title">Calendar</div>
+      <div class="field">
+        <label class="fl">Google Calendar — private ICS URL</label>
+        <input type="text" id="calendar-ics-url" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics">
+        <p class="hint">Google Calendar → Settings → your calendar → <strong>"Secret address in iCal format"</strong> → copy the URL.</p>
+      </div>
+      <div class="save-row">
+        <button class="btn" onclick="saveIntegrations()">Save</button>
+        <span id="integrations-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Meal Plan -->
+    <div class="section" id="sec-meal-plan">
+      <div class="section-title">Weekly Meal Plan</div>
+      <div id="meal-days"></div>
+      <div class="save-row">
+        <button class="btn" onclick="saveMealPlan()">Save</button>
+        <span id="meal-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Portfolio -->
+    <div class="section" id="sec-portfolio">
+      <div class="section-title">Portfolio</div>
+      <p class="hint" style="margin-bottom:14px">Ticker symbols and share counts. Public price data only — no brokerage credentials.</p>
+      <div class="port-header">
+        <span>Ticker</span><span>Shares</span><span></span>
+      </div>
+      <div id="port-rows"></div>
+      <button class="btn ghost" onclick="addPortfolioRow()">+ Add ticker</button>
+      <div class="save-row">
+        <button class="btn" onclick="savePortfolio()">Save</button>
+        <span id="portfolio-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- Schedule -->
+    <div class="section" id="sec-schedule">
+      <div class="section-title">Refresh Schedule</div>
+      <p class="hint" style="margin-bottom:16px">Timer fires every 10 min; each widget only refreshes within its own window. Manual Refresh works any time.</p>
+      <table style="width:100%;border-collapse:collapse" id="schedule-table">
+        <thead>
+          <tr style="font-size:11px;color:var(--subtle);text-transform:uppercase;letter-spacing:.08em">
+            <th style="text-align:left;padding:4px 8px 8px 0">Widget</th>
+            <th style="padding:4px 8px 8px;text-align:center">Enabled</th>
+            <th style="padding:4px 8px 8px">Start</th>
+            <th style="padding:4px 8px 8px">End</th>
+          </tr>
+        </thead>
+        <tbody id="schedule-rows"></tbody>
+      </table>
+      <div class="save-row">
+        <button class="btn" onclick="saveSchedule()">Save</button>
+        <span id="schedule-status" class="status"></span>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ── Right panel: Preview + Refresh ────────────────────────────────── -->
+  <aside class="right-panel">
+
+    <div class="panel-block">
+      <div class="panel-title">Device Token</div>
+      <input type="text" id="preview-token" placeholder="Paste device token once…" autocomplete="off" style="width:100%;font-size:12px;padding:7px 9px" oninput="saveToken()">
+    </div>
+
+    <div class="panel-block">
+      <div class="panel-title">Refresh Data</div>
+      <div class="btn-row" style="margin-bottom:8px">
+        <button class="btn" onclick="runRefresh()">Refresh All Now</button>
+      </div>
+      <span id="refresh-status" class="status" style="display:block"></span>
+      <pre class="refresh-out" id="refresh-results"></pre>
+    </div>
+
+    <div class="panel-block" style="flex:1;overflow-y:auto">
+      <div class="panel-title">Display Preview</div>
+      <div class="btn-row">
+        <button class="btn" onclick="loadPreview()">Load</button>
+        <button class="btn sec" onclick="loadPreview(true)">Next widget</button>
+      </div>
+      <div class="preview-frame" id="preview-frame">
+        <div class="preview-placeholder" id="preview-placeholder">Enter token above, then Load</div>
+        <img id="preview-img" style="display:none" alt="Display preview" onerror="previewError()">
+      </div>
+      <p class="preview-hint" id="preview-hint"></p>
+    </div>
+
+  </aside>
+
+</div>
+
+<script>
+const WIDGET_META = {
+  weather:   { label: "Weather" },
+  calendar:  { label: "Calendar" },
+  meal_plan: { label: "Meal Plan & Grocery" },
+  commute:   { label: "Commute Routes" },
+  portfolio: { label: "Portfolio" },
+};
+const ALL_WIDGETS = ["weather","calendar","meal_plan","commute","portfolio"];
+const DAY_KEYS   = ["mon","tue","wed","thu","fri","sat","sun"];
+const DAY_LABELS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+
+let settings = {};
+let dragSrc = null;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+
+function checkAuth() {
+  document.getElementById("app").style.display = "";
+  const tok = localStorage.getItem("previewToken");
+  if (tok) document.getElementById("preview-token").value = tok;
+  loadSettings();
+}
+
+function saveToken() {
+  localStorage.setItem("previewToken", document.getElementById("preview-token").value.trim());
+}
+
+// ── Nav ───────────────────────────────────────────────────────────────────
+
+function showSection(id, btn) {
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+  document.getElementById("sec-" + id).classList.add("active");
+  if (btn) btn.classList.add("active");
+}
+
+// ── Settings load / save ──────────────────────────────────────────────────
+
+async function loadSettings() {
+  renderAll();
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch("/api/settings", { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!r.ok) throw new Error(r.status);
+    settings = await r.json();
+    renderAll();
+  } catch (e) {
+    if (e.name !== "AbortError") console.error("load failed", e);
+  }
+}
+
+function renderAll() {
+  renderWidgetList();
+  renderAddresses();
+  renderIntegrations();
+  renderMealPlan();
+  renderPortfolio();
+  renderSchedule();
+}
+
+// ── Schedule ──────────────────────────────────────────────────────────────
+
+const SCHEDULE_WIDGETS = [
+  { key: "weather",   label: "Weather",   start: 7,  end: 10 },
+  { key: "calendar",  label: "Calendar",  start: 7,  end: 10 },
+  { key: "commute",   label: "Commute",   start: 7,  end: 9  },
+  { key: "portfolio", label: "Portfolio", start: 9,  end: 16 },
+  { key: "meal_plan", label: "Meal Plan", start: 7,  end: 10 },
+];
+
+function _fmtHour(h) {
+  if (h === 0) return "12:00 AM";
+  if (h < 12) return `${h}:00 AM`;
+  if (h === 12) return "12:00 PM";
+  return `${h - 12}:00 PM`;
+}
+
+function _hourSelect(id, val) {
+  const sel = document.createElement("select");
+  sel.id = id;
+  sel.style.cssText = "padding:4px 6px;font-size:13px;font-family:var(--font)";
+  for (let h = 0; h < 24; h++) {
+    const opt = document.createElement("option");
+    opt.value = h; opt.textContent = _fmtHour(h);
+    if (h === val) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  return sel;
+}
+
+function renderSchedule() {
+  const saved = settings.schedule || {};
+  const tbody = document.getElementById("schedule-rows");
+  tbody.innerHTML = "";
+  for (const w of SCHEDULE_WIDGETS) {
+    const cfg = saved[w.key] || { enabled: true, start_hour: w.start, end_hour: w.end };
+    const tr = document.createElement("tr");
+    tr.style.borderTop = "1px solid var(--border)";
+
+    const tdLabel = document.createElement("td");
+    tdLabel.style.cssText = "padding:8px 8px 8px 0;font-size:13px";
+    tdLabel.textContent = w.label;
+
+    const tdToggle = document.createElement("td");
+    tdToggle.style.cssText = "padding:8px;text-align:center";
+    const lbl = document.createElement("label");
+    lbl.className = "toggle";
+    const chk = document.createElement("input");
+    chk.type = "checkbox"; chk.id = `sch-${w.key}-enabled`; chk.checked = cfg.enabled !== false;
+    const track = document.createElement("span"); track.className = "toggle-track";
+    const thumb = document.createElement("span"); thumb.className = "toggle-thumb";
+    lbl.append(chk, track, thumb);
+    tdToggle.appendChild(lbl);
+
+    const tdStart = document.createElement("td");
+    tdStart.style.padding = "8px";
+    tdStart.appendChild(_hourSelect(`sch-${w.key}-start`, cfg.start_hour ?? w.start));
+
+    const tdEnd = document.createElement("td");
+    tdEnd.style.padding = "8px";
+    tdEnd.appendChild(_hourSelect(`sch-${w.key}-end`, cfg.end_hour ?? w.end));
+
+    tr.append(tdLabel, tdToggle, tdStart, tdEnd);
+    tbody.appendChild(tr);
+  }
+}
+
+function saveSchedule() {
+  const data = {};
+  for (const w of SCHEDULE_WIDGETS) {
+    data[w.key] = {
+      enabled:    document.getElementById(`sch-${w.key}-enabled`).checked,
+      start_hour: parseInt(document.getElementById(`sch-${w.key}-start`).value),
+      end_hour:   parseInt(document.getElementById(`sch-${w.key}-end`).value),
+    };
+  }
+  saveSection("schedule", data, "schedule-status");
+}
+
+async function saveSection(key, data, statusId) {
+  const el = document.getElementById(statusId);
+  el.textContent = "Saving…"; el.className = "status";
+  try {
+    const r = await fetch("/api/settings", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [key]: data }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) throw new Error(body.error || r.status);
+    el.textContent = "Saved ✓"; el.className = "status ok";
+    setTimeout(() => { el.textContent = ""; }, 3000);
+  } catch (e) {
+    el.textContent = "Error: " + e.message; el.className = "status err";
+  }
+}
+
+// ── Widgets ───────────────────────────────────────────────────────────────
+
+function renderWidgetList() {
+  const enabled = (settings.widgets || {}).enabled || ALL_WIDGETS;
+  const ul = document.getElementById("widget-list");
+  ul.innerHTML = "";
+  const order = [...ALL_WIDGETS].sort((a, b) => {
+    const ia = enabled.indexOf(a), ib = enabled.indexOf(b);
+    if (ia < 0 && ib < 0) return 0;
+    return ia < 0 ? 1 : ib < 0 ? -1 : ia - ib;
+  });
+  for (const key of order) {
+    const isOn = enabled.includes(key);
+    const li = document.createElement("li");
+    li.className = "widget-item"; li.draggable = true; li.dataset.key = key;
+    li.innerHTML = `
+      <span class="drag-handle">⠿</span>
+      <span class="widget-name">${(WIDGET_META[key] || {}).label || key}</span>
+      <div class="reorder-btns">
+        <button onclick="moveWidget(this,'up')">▲</button>
+        <button onclick="moveWidget(this,'down')">▼</button>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" ${isOn ? "checked" : ""}>
+        <span class="toggle-track"></span>
+        <span class="toggle-thumb"></span>
+      </label>`;
+    li.addEventListener("dragstart", e => { dragSrc = li; li.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; });
+    li.addEventListener("dragend", () => li.classList.remove("dragging"));
+    li.addEventListener("dragover", e => { e.preventDefault(); li.classList.add("drag-over"); });
+    li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+    li.addEventListener("drop", e => {
+      e.preventDefault(); li.classList.remove("drag-over");
+      if (dragSrc && dragSrc !== li) ul.insertBefore(dragSrc, li.nextSibling);
+    });
+    ul.appendChild(li);
+  }
+}
+
+function moveWidget(btn, dir) {
+  const li = btn.closest(".widget-item"), ul = li.parentElement;
+  if (dir === "up" && li.previousElementSibling) ul.insertBefore(li, li.previousElementSibling);
+  else if (dir === "down" && li.nextElementSibling) ul.insertBefore(li.nextElementSibling, li);
+}
+
+function saveWidgets() {
+  const ul = document.getElementById("widget-list");
+  const enabled = [...ul.querySelectorAll(".widget-item")]
+    .filter(li => li.querySelector("input[type=checkbox]").checked)
+    .map(li => li.dataset.key);
+  saveSection("widgets", { enabled }, "widgets-status");
+}
+
+// ── Addresses ─────────────────────────────────────────────────────────────
+
+function renderAddresses() {
+  const a = settings.addresses || {}, h = a.home || {}, w = a.work || {};
+  document.getElementById("home-label").value = h.label || "";
+  document.getElementById("home-lat").value   = h.lat   || "";
+  document.getElementById("home-lon").value   = h.lon   || "";
+  document.getElementById("work-label").value = w.label || "";
+  document.getElementById("work-lat").value   = w.lat   || "";
+  document.getElementById("work-lon").value   = w.lon   || "";
+}
+
+function saveAddresses() {
+  saveSection("addresses", {
+    home: { label: v("home-label"), lat: parseFloat(v("home-lat")) || 0, lon: parseFloat(v("home-lon")) || 0 },
+    work: { label: v("work-label"), lat: parseFloat(v("work-lat")) || 0, lon: parseFloat(v("work-lon")) || 0 },
+  }, "addresses-status");
+}
+
+// ── Integrations / Calendar ───────────────────────────────────────────────
+
+function renderIntegrations() {
+  document.getElementById("calendar-ics-url").value = (settings.integrations || {}).calendar_ics_url || "";
+}
+
+function saveIntegrations() {
+  saveSection("integrations", { calendar_ics_url: v("calendar-ics-url") }, "integrations-status");
+}
+
+// ── Meal Plan ─────────────────────────────────────────────────────────────
+
+function renderMealPlan() {
+  const plan = settings.meal_plan || {};
+  const container = document.getElementById("meal-days");
+  container.innerHTML = "";
+  for (let i = 0; i < 7; i++) {
+    const key = DAY_KEYS[i], day = plan[key] || {};
+    const div = document.createElement("div");
+    div.className = "meal-day"; div.dataset.day = key;
+    div.innerHTML = `
+      <div class="meal-day-header">
+        <span class="meal-day-label">${DAY_LABELS[i]}</span>
+        <input type="text" id="meal-${key}" value="${esc(day.dinner||'')}" placeholder="Dinner…">
+      </div>
+      <div class="grocery-section">
+        <div class="grocery-label-row">Grocery items</div>
+        <div class="grocery-items" id="grocery-list-${key}"></div>
+        <button class="btn ghost" style="margin-top:4px" onclick="addGroceryItem('${key}')">+ Add item</button>
+      </div>`;
+    container.appendChild(div);
+    for (const item of (day.grocery || [])) addGroceryRow(key, item);
+  }
+}
+
+function addGroceryItem(key) {
+  addGroceryRow(key, "");
+  const list = document.getElementById("grocery-list-" + key);
+  list.querySelector(".grocery-row:last-child input")?.focus();
+}
+
+function addGroceryRow(key, val) {
+  const list = document.getElementById("grocery-list-" + key);
+  const row = document.createElement("div");
+  row.className = "grocery-row";
+  row.innerHTML = `<input type="text" value="${esc(val)}" placeholder="Item…"><button class="btn-x" onclick="this.parentElement.remove()">✕</button>`;
+  list.appendChild(row);
+}
+
+function saveMealPlan() {
+  const plan = {};
+  for (const key of DAY_KEYS) {
+    plan[key] = {
+      dinner: (document.getElementById("meal-" + key)?.value || "").trim(),
+      grocery: [...document.querySelectorAll(`#grocery-list-${key} input`)].map(i => i.value.trim()).filter(Boolean),
+    };
+  }
+  saveSection("meal_plan", plan, "meal-status");
+}
+
+// ── Portfolio ─────────────────────────────────────────────────────────────
+
+function renderPortfolio() {
+  const holdings = settings.portfolio || [];
+  document.getElementById("port-rows").innerHTML = "";
+  for (const h of holdings) addPortfolioRowData(h.ticker, h.shares);
+  if (!holdings.length) addPortfolioRowData("", "");
+}
+
+function addPortfolioRow() { addPortfolioRowData("", ""); }
+
+function addPortfolioRowData(ticker, shares) {
+  const wrap = document.getElementById("port-rows");
+  const row = document.createElement("div");
+  row.className = "port-grid port-row";
+  row.innerHTML = `
+    <input type="text" value="${esc(String(ticker))}" placeholder="AAPL" style="text-transform:uppercase">
+    <input type="number" value="${esc(String(shares))}" placeholder="0" min="0" step="0.001">
+    <button class="btn-x" onclick="this.closest('.port-row').remove()">✕</button>`;
+  row.style.marginBottom = "6px";
+  wrap.appendChild(row);
+}
+
+function savePortfolio() {
+  const holdings = [...document.querySelectorAll(".port-row")].map(row => {
+    const [t, s] = row.querySelectorAll("input");
+    return { ticker: t.value.trim().toUpperCase(), shares: parseFloat(s.value) || 0 };
+  }).filter(h => h.ticker);
+  saveSection("portfolio", holdings, "portfolio-status");
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────
+
+async function runRefresh() {
+  const token = document.getElementById("preview-token").value.trim();
+  const statusEl = document.getElementById("refresh-status");
+  const resultsEl = document.getElementById("refresh-results");
+  if (!token) { statusEl.textContent = "Enter device token above."; statusEl.className = "status err"; return; }
+  statusEl.textContent = "Refreshing…"; statusEl.className = "status";
+  resultsEl.style.display = "none";
+  try {
+    const r = await fetch("/api/refresh?token=" + encodeURIComponent(token), { method: "POST" });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) throw new Error(body.error || r.status);
+    statusEl.textContent = "Done ✓"; statusEl.className = "status ok";
+    setTimeout(() => { statusEl.textContent = ""; }, 5000);
+    const res = body.results || {};
+    resultsEl.textContent = Object.entries(res).map(([k, v]) => `${k.padEnd(10)} ${v}`).join("\n");
+    resultsEl.style.display = "block";
+  } catch (e) {
+    statusEl.textContent = "Error: " + e.message; statusEl.className = "status err";
+  }
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────
+
+function loadPreview(advance) {
+  const token = document.getElementById("preview-token").value.trim();
+  const img = document.getElementById("preview-img");
+  const ph  = document.getElementById("preview-placeholder");
+  const hint = document.getElementById("preview-hint");
+  if (!token) { ph.textContent = "Enter device token above."; return; }
+  hint.textContent = "Loading…";
+  img.style.display = "none"; ph.style.display = "flex";
+  img.onload = () => { ph.style.display = "none"; img.style.display = "block"; hint.textContent = "Updated " + new Date().toLocaleTimeString(); };
+  img.src = "/api/render?token=" + encodeURIComponent(token) + "&_t=" + Date.now();
+}
+
+function previewError() {
+  document.getElementById("preview-img").style.display = "none";
+  document.getElementById("preview-placeholder").textContent = "Failed — check token.";
+  document.getElementById("preview-placeholder").style.display = "flex";
+  document.getElementById("preview-hint").textContent = "";
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────────
+
+function v(id) { return (document.getElementById(id)?.value || "").trim(); }
+function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+checkAuth();
+</script>
+</body>
+</html>

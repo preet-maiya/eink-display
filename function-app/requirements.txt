@@ -1,0 +1,7 @@
+azure-functions
+azure-data-tables
+azure-identity
+Pillow>=10.0.0
+requests
+icalendar
+yfinance

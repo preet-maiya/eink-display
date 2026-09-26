@@ -1,0 +1,29 @@
+# Secrets / local config
+.env
+.env.*
+function-app/local.settings.json
+firmware/secrets.h
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+function-app/.python_packages/
+
+# Generated assets (run scripts/download_fonts.py)
+function-app/fonts/
+
+# Build / deploy artifacts
+*.zip
+.azure/
+
+# Arduino / PlatformIO
+.pio/
+build/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+.claude/settings.local.json
