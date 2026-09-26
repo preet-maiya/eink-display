@@ -186,7 +186,11 @@ def render(req: func.HttpRequest) -> func.HttpResponse:
     cache = table_ops.get_cache(widget_name)
     cache_data = cache.get("data")
 
-    updated_str = format_updated(cache.get("updated_at", ""))
+    if widget_name == "meal_plan":
+        # Rendered live from settings (no cache), so data is current as of now.
+        updated_str = format_updated(datetime.now(timezone.utc).isoformat())
+    else:
+        updated_str = format_updated(cache.get("updated_at", ""))
 
     bmp = _render_widget(
         widget_name, cache_data, settings, updated_str, battery_pct, rotation_idx, len(enabled)
