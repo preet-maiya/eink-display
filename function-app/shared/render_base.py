@@ -302,3 +302,9 @@ def to_bmp(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     bmp.save(buf, format="BMP")
     return buf.getvalue()
+
+
+def invert_bmp(bmp: bytes) -> bytes:
+    """Swap black and white in a rendered BMP (dark mode)."""
+    img = Image.open(io.BytesIO(bmp)).convert("L")
+    return to_bmp(img.point(lambda p: 255 - p))

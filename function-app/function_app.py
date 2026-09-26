@@ -9,7 +9,7 @@ import requests
 from azure.identity import DefaultAzureCredential
 
 import shared.table_ops as table_ops
-from shared.render_base import to_bmp, format_updated  # also triggers font path setup on cold start
+from shared.render_base import to_bmp, invert_bmp, format_updated  # also triggers font path setup on cold start
 from shared.widgets import (
     weather as w_weather,
     calendar_widget as w_calendar,
@@ -195,6 +195,8 @@ def render(req: func.HttpRequest) -> func.HttpResponse:
     bmp = _render_widget(
         widget_name, cache_data, settings, updated_str, battery_pct, rotation_idx, len(enabled)
     )
+    if (settings.get("display") or {}).get("dark_mode"):
+        bmp = invert_bmp(bmp)
 
     return func.HttpResponse(bmp, mimetype="image/bmp", status_code=200)
 

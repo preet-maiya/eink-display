@@ -19,7 +19,7 @@ CLI            := "$(ARDUINO_CLI)" --additional-urls $(ESP32_INDEX)
 
 .PHONY: help login rg validate infra outputs \
         auth-setup auth-show \
-        deploy-functions deploy-web deploy \
+        deploy-functions deploy-web deploy gh-setup swa-token \
         fw-setup fw-build fw-flash fw-monitor fw-ports \
         destroy
 
@@ -40,6 +40,8 @@ help:
 	@echo "  make deploy-functions  Publish Function App code only"
 	@echo "  make deploy-web        Publish settings site only"
 	@echo "  make deploy            Both of the above"
+	@echo "  make gh-setup          One-time: let GitHub Actions deploy (OIDC + secrets)"
+	@echo "  make swa-token         Print SWA deployment token (for manual secret setup)"
 	@echo ""
 	@echo "  FIRMWARE (reTerminal E1001 via arduino-cli)"
 	@echo "  ──────────────────────────────────────────────────────────────────"
@@ -125,6 +127,13 @@ deploy-web:
 	npx --yes @azure/static-web-apps-cli deploy $(WEB_DIR) --deployment-token $(SWA_TOKEN) --env production
 
 deploy: deploy-functions deploy-web
+
+# One-time: service principal + federated credential + GitHub secrets for .github/workflows
+gh-setup:
+	./scripts/setup-gh-oidc.sh $(RESOURCE_GROUP)
+
+swa-token:
+	@az staticwebapp secrets list -g $(RESOURCE_GROUP) -n $(SWA_NAME) --query properties.apiKey -o tsv
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FIRMWARE
