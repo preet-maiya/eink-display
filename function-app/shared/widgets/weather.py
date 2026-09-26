@@ -5,6 +5,7 @@ from typing import Optional
 from PIL import Image, ImageDraw
 
 from shared.render_base import (
+    header_date,
     W, H, PAD_X, PAD_Y, CONTENT_TOP, CONTENT_BOTTOM,
     draw_header, draw_footer, draw_vline, draw_weather_icon,
     draw_thin_rule, draw_eyebrow,
@@ -48,7 +49,7 @@ def render(
     img = Image.new("L", (W, H), 255)
     draw = ImageDraw.Draw(img)
 
-    today_str = now_local().strftime("%a · %b %-d").upper()
+    today_str = header_date()
     draw_header(draw, "Weather", today_str)
 
     if data is None:

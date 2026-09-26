@@ -5,6 +5,7 @@ from typing import Optional
 from PIL import Image, ImageDraw
 
 from shared.render_base import (
+    header_date,
     W, H, PAD_X, PAD_Y, CONTENT_TOP, CONTENT_BOTTOM,
     draw_header, draw_footer, draw_vline,
     font_display, font_mono, draw_eyebrow, to_bmp, now_local,
@@ -26,7 +27,7 @@ def render(
     draw = ImageDraw.Draw(img)
 
     today = now_local()
-    today_str = today.strftime("%a · %b %-d").upper()
+    today_str = header_date()
     draw_header(draw, "This Week's Menu", today_str)
 
     meal_plan = settings.get("meal_plan", {})

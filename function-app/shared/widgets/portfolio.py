@@ -6,6 +6,7 @@ from typing import Optional
 from PIL import Image, ImageDraw
 
 from shared.render_base import (
+    header_date,
     W, H, PAD_X, PAD_Y, CONTENT_TOP, CONTENT_BOTTOM, RULE_Y,
     draw_header, draw_footer, draw_thick_rule, draw_thin_rule,
     font_display, font_mono, draw_eyebrow, text_w, to_bmp,
@@ -33,7 +34,7 @@ def render(
     img = Image.new("L", (W, H), 255)
     draw = ImageDraw.Draw(img)
 
-    today_str = datetime.now().strftime("%a · %b %-d").upper()
+    today_str = header_date()
     draw_header(draw, "Portfolio", today_str)
 
     if data is None:

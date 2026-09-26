@@ -9,7 +9,7 @@ import requests
 from azure.identity import DefaultAzureCredential
 
 import shared.table_ops as table_ops
-from shared.render_base import to_bmp  # also triggers font path setup on cold start
+from shared.render_base import to_bmp, format_updated  # also triggers font path setup on cold start
 from shared.widgets import (
     weather as w_weather,
     calendar_widget as w_calendar,
@@ -186,18 +186,7 @@ def render(req: func.HttpRequest) -> func.HttpResponse:
     cache = table_ops.get_cache(widget_name)
     cache_data = cache.get("data")
 
-    raw_updated = cache.get("updated_at", "")
-    if raw_updated:
-        try:
-            from zoneinfo import ZoneInfo
-            tz = ZoneInfo(os.environ.get("DISPLAY_TIMEZONE", "America/Los_Angeles"))
-            dt = datetime.fromisoformat(raw_updated.replace("Z", "+00:00"))
-            dt_local = dt.astimezone(tz)
-            updated_str = dt_local.strftime("%-I:%M %p")
-        except Exception:
-            updated_str = raw_updated[:5]
-    else:
-        updated_str = "—"
+    updated_str = format_updated(cache.get("updated_at", ""))
 
     bmp = _render_widget(
         widget_name, cache_data, settings, updated_str, battery_pct, rotation_idx, len(enabled)

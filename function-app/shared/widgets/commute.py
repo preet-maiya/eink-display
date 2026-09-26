@@ -5,6 +5,7 @@ from typing import Optional
 from PIL import Image, ImageDraw
 
 from shared.render_base import (
+    header_date,
     W, H, PAD_X, PAD_Y, CONTENT_TOP, CONTENT_BOTTOM,
     draw_header, draw_footer, draw_thin_rule,
     font_display, font_mono, draw_eyebrow, to_bmp, now_local, text_w,
@@ -52,8 +53,7 @@ def render(
     else:
         direction = "Commute"
 
-    time_str = now.strftime("%-I:%M %p")
-    draw_header(draw, f"Commute — {direction}", time_str)
+    draw_header(draw, f"Commute — {direction}", header_date())
 
     if data is None:
         draw.text((W // 2, H // 2), "— no data yet —", font=font_mono(24), fill=0, anchor="mm")

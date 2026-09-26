@@ -5,26 +5,34 @@
  *   - GxEPD2 by ZinggJM  (tested ≥ 1.5.x)
  *   - Adafruit GFX Library
  *
- * Verify / adjust pins at the top of this file before flashing.
  * Rename secrets.h.example → secrets.h and fill in your values.
  *
- * Board: "ESP32S3 Dev Module" (or Seeed reTerminal E1001 if listed)
+ * Board package: "esp32 by Espressif Systems" (NOT "Arduino ESP32 Boards",
+ * which uploads via dfu-util and fails with "No DFU capable USB device").
+ *
+ * Arduino IDE → Tools:
+ *   Board:  esp32 → "XIAO_ESP32S3" (Seeed's recommendation for the E1001)
+ *   PSRAM:  "OPI PSRAM"
+ *   USB CDC On Boot: "Disabled" (USB-C goes through a USB-UART bridge,
+ *                    shows up as /dev/cu.usbserial-*)
  */
 
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <SPI.h>
 #include <WiFiClientSecure.h>
 #include <GxEPD2_BW.h>
 #include <Wire.h>
 #include "driver/rtc_io.h"
 #include "secrets.h"
 
-// ── Display pin mapping ─────────────────────────────────────────────────────
-// Verify against Seeed reTerminal E1001 schematic before flashing.
-#define EPD_CS    8
-#define EPD_DC    9
-#define EPD_RST   10
-#define EPD_BUSY  11
+// ── Display pin mapping (Seeed wiki: reTerminal E10xx with Arduino) ──────────
+#define EPD_SCK   7
+#define EPD_MOSI  9
+#define EPD_CS    10
+#define EPD_DC    11
+#define EPD_RST   12
+#define EPD_BUSY  13
 
 // ── Button GPIOs (active low; all RTC-capable so they can wake deep sleep) ───
 #define BTN_REFRESH  3   // Green: force immediate refresh
@@ -48,10 +56,15 @@
 #define RETRY_US          ( 5ULL * 60 * 1000000)   // after a failed fetch
 #define WIFI_TIMEOUT_MS   15000
 
-// Display: Waveshare 7.5" V2, 800×480
-// Change to the matching GxEPD2 class for your exact panel revision.
-GxEPD2_BW<GxEPD2_750_T7, GxEPD2_750_T7::HEIGHT> display(
-    GxEPD2_750_T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
+// Display: GDEY075T7 (UC8179), 800×480 — the E1001 panel.
+// It sits on non-default SPI pins, so it gets its own HSPI bus.
+SPIClass epdSpi(HSPI);
+GxEPD2_BW<GxEPD2_750_GDEY075T7, GxEPD2_750_GDEY075T7::HEIGHT> display(
+    GxEPD2_750_GDEY075T7(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
+
+// BMP from the server is 1 = white, which matches GxEPD2. Set to 1 if the
+// screen comes out as a negative.
+#define INVERT_BITS 0
 
 static const int EPD_W = 800;
 static const int EPD_H = 480;
@@ -108,6 +121,8 @@ void setup() {
     }
 
     // Only clear the panel on cold boot; otherwise keep the last image while fetching
+    epdSpi.begin(EPD_SCK, -1, EPD_MOSI, -1);
+    display.epd2.selectSPI(epdSpi, SPISettings(2000000, MSBFIRST, SPI_MODE0));
     display.init(115200, coldBoot, 2, false);
     display.setRotation(0);
 
@@ -188,6 +203,8 @@ bool fetchAndDisplay(const String& widgetOverride, int batteryPct, float tempC, 
     WiFiClientSecure client;
     client.setInsecure();  // replace with CA cert for production
     HTTPClient http;
+    // HTTP/1.0 stops Azure from using chunked encoding; we read the raw stream
+    http.useHTTP10(true);
     http.begin(client, url);
     http.setTimeout(30000);
     int code = http.GET();
@@ -234,9 +251,9 @@ bool fetchAndDisplay(const String& widgetOverride, int batteryPct, float tempC, 
             http.end();
             return false;
         }
-        // BMP 1-bit: 1=white, 0=black; Waveshare 7.5 V2 uses 0=black 1=white
-        // Invert bits: comment out if display shows inverted image
-        for (int j = 0; j < BMP_ROW_BYTES; j++) rowBuf[j] = ~rowBuf[j];
+        if (INVERT_BITS) {
+            for (int j = 0; j < BMP_ROW_BYTES; j++) rowBuf[j] = ~rowBuf[j];
+        }
         memcpy(imgBuf + row * BMP_ROW_BYTES, rowBuf, BMP_ROW_BYTES);
         bytesRead += BMP_ROW_BYTES;
     }

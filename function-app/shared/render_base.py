@@ -15,6 +15,24 @@ def now_local() -> datetime:
     """Current time in the configured local timezone (default: America/Los_Angeles)."""
     return datetime.now(_local_tz())
 
+
+def header_date() -> str:
+    """Absolute date for widget headers, e.g. 'SAT · SEP 26'."""
+    return now_local().strftime("%a · %b %-d").upper()
+
+
+def format_updated(iso_ts: str) -> str:
+    """Footer 'Updated' stamp: time only if today, else date + time."""
+    if not iso_ts:
+        return "—"
+    try:
+        dt = datetime.fromisoformat(iso_ts.replace("Z", "+00:00")).astimezone(_local_tz())
+    except ValueError:
+        return iso_ts[:16]
+    if dt.date() == now_local().date():
+        return dt.strftime("%-I:%M %p")
+    return dt.strftime("%b %-d, %-I:%M %p")
+
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 800, 480

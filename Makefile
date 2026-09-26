@@ -6,9 +6,21 @@ WEB_DIR        ?= ./settings-site
 SWA_NAME       := fridgedash-swa-4jak7dmb55jui
 SWA_URL        := https://purple-dune-050a09e0f.5.azurestaticapps.net
 
+# Firmware (arduino-cli). Falls back to the copy bundled with Arduino IDE.
+FW_DIR         ?= ./firmware
+FW_BUILD       ?= $(FW_DIR)/build
+ARDUINO_CLI    ?= $(shell command -v arduino-cli 2>/dev/null || echo "/Applications/Arduino IDE.app/Contents/Resources/app/lib/backend/resources/arduino-cli")
+ESP32_INDEX    := https://espressif.github.io/arduino-esp32/package_esp32_index.json
+# 921600 is too fast for the E1001's USB-UART bridge; 230400 also works if 115200 feels slow
+UPLOAD_BAUD    ?= 115200
+FQBN           := esp32:esp32:XIAO_ESP32S3:PSRAM=opi,CDCOnBoot=cdc,UploadSpeed=$(UPLOAD_BAUD)
+PORT           ?= $(firstword $(wildcard /dev/cu.usbserial-*))
+CLI            := "$(ARDUINO_CLI)" --additional-urls $(ESP32_INDEX)
+
 .PHONY: help login rg validate infra outputs \
         auth-setup auth-show \
         deploy-functions deploy-web deploy \
+        fw-setup fw-build fw-flash fw-monitor fw-ports \
         destroy
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,6 +40,14 @@ help:
 	@echo "  make deploy-functions  Publish Function App code only"
 	@echo "  make deploy-web        Publish settings site only"
 	@echo "  make deploy            Both of the above"
+	@echo ""
+	@echo "  FIRMWARE (reTerminal E1001 via arduino-cli)"
+	@echo "  ──────────────────────────────────────────────────────────────────"
+	@echo "  make fw-setup          Install esp32 core + GxEPD2 / Adafruit GFX (once)"
+	@echo "  make fw-build          Compile firmware/firmware.ino"
+	@echo "  make fw-flash          Compile + upload (PORT=/dev/cu.usbserial-* auto)"
+	@echo "  make fw-monitor        Serial monitor at 115200"
+	@echo "  make fw-ports          List connected boards / serial ports"
 	@echo ""
 	@echo "  DIAGNOSTICS"
 	@echo "  ──────────────────────────────────────────────────────────────────"
@@ -105,6 +125,31 @@ deploy-web:
 	npx --yes @azure/static-web-apps-cli deploy $(WEB_DIR) --deployment-token $(SWA_TOKEN) --env production
 
 deploy: deploy-functions deploy-web
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FIRMWARE
+# ─────────────────────────────────────────────────────────────────────────────
+
+fw-setup:
+	$(CLI) core update-index
+	$(CLI) core install esp32:esp32
+	$(CLI) lib install GxEPD2 "Adafruit GFX Library"
+
+fw-build:
+	@test -f $(FW_DIR)/secrets.h || { echo "Missing $(FW_DIR)/secrets.h — copy secrets.h.example and fill it in"; exit 1; }
+	$(CLI) compile --fqbn $(FQBN) --build-path $(FW_BUILD) $(FW_DIR)
+
+fw-flash: fw-build
+	@test -n "$(PORT)" || { echo "No /dev/cu.usbserial-* port found. Plug in the device (press a button to wake it) or pass PORT=..."; exit 1; }
+	@! lsof $(PORT) >/dev/null 2>&1 || { echo "$(PORT) is in use (close the serial monitor first):"; lsof $(PORT); exit 1; }
+	$(CLI) upload --fqbn $(FQBN) --input-dir $(FW_BUILD) -p $(PORT) $(FW_DIR)
+
+fw-monitor:
+	@test -n "$(PORT)" || { echo "No /dev/cu.usbserial-* port found. Pass PORT=..."; exit 1; }
+	$(CLI) monitor -p $(PORT) -c baudrate=115200
+
+fw-ports:
+	$(CLI) board list
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DIAGNOSTICS

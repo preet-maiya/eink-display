@@ -44,7 +44,7 @@ A kitchen dashboard on a 7.5" e-paper display (reTerminal E1001, ESP32-S3). It s
 
 4. Flash the firmware:
    - Copy `firmware/secrets.h.example` to `firmware/secrets.h` and fill in your Wi-Fi details, the Function App host and `DEVICE_TOKEN`.
-   - Open `firmware/firmware.ino` in the Arduino IDE. Select board **ESP32S3 Dev Module**, then upload.
+   - Open `firmware/firmware.ino` in the Arduino IDE. Install the **esp32 by Espressif Systems** board package, then select board **XIAO_ESP32S3**, PSRAM **OPI PSRAM**, USB CDC On Boot **Disabled**, port `/dev/cu.usbserial-*`, and upload.
 
 ## Everyday commands
 
@@ -53,6 +53,9 @@ A kitchen dashboard on a 7.5" e-paper display (reTerminal E1001, ESP32-S3). It s
 | `make deploy-functions` | Redeploy the Function App only |
 | `make deploy-web` | Redeploy the settings site only |
 | `make deploy` | Redeploy both |
+| `make fw-setup` | Install the esp32 core + firmware libraries (once) |
+| `make fw-flash` | Compile + upload the firmware to the device |
+| `make fw-monitor` | Open the serial monitor (115200) |
 | `make outputs` | Show resource names / hostnames |
 | `make validate` | Compile-check the Bicep template |
 | `make help` | List all commands |
