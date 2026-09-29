@@ -17,7 +17,7 @@ FQBN           := esp32:esp32:XIAO_ESP32S3:PSRAM=opi,CDCOnBoot=cdc,UploadSpeed=$
 PORT           ?= $(firstword $(wildcard /dev/cu.usbserial-*))
 CLI            := "$(ARDUINO_CLI)" --additional-urls $(ESP32_INDEX)
 
-.PHONY: help login rg validate infra outputs \
+.PHONY: help login rg validate infra infra-staging staging-token outputs \
         auth-setup auth-show \
         deploy-functions deploy-web deploy gh-setup swa-token \
         fw-setup fw-build fw-flash fw-monitor fw-ports \
@@ -41,6 +41,11 @@ help:
 	@echo "  make deploy-web        Publish settings site only"
 	@echo "  make deploy            Both of the above"
 	@echo "  make gh-setup          One-time: let GitHub Actions deploy (OIDC + secrets)"
+	@echo ""
+	@echo "  PR STAGING (each open PR gets its own Function App + table snapshot)"
+	@echo "  ──────────────────────────────────────────────────────────────────"
+	@echo "  make infra-staging     Create the staging app pool, then re-run gh-setup"
+	@echo "  make staging-token     Print the device token for PR preview sites"
 	@echo "  make swa-token         Print SWA deployment token (for manual secret setup)"
 	@echo ""
 	@echo "  FIRMWARE (reTerminal E1001 via arduino-cli)"
@@ -87,6 +92,20 @@ infra: rg
 		--parameters infra/main.bicepparam \
 		--parameters prefix=$(PREFIX) location=$(LOCATION) \
 		--query properties.outputs
+
+# Pool of PR staging Function Apps on the same B1 plan. Takes no secrets, so it
+# never touches prod. Re-running resets claimed apps, so do it with no PRs open.
+infra-staging:
+	az deployment group create \
+		--name staging \
+		--resource-group $(RESOURCE_GROUP) \
+		--template-file infra/staging.bicep \
+		--parameters prefix=$(PREFIX) \
+			location="$$(az appservice plan list -g $(RESOURCE_GROUP) --query '[0].location' -o tsv)" \
+		--query properties.outputs
+
+staging-token:
+	@cat .staging-device-token
 
 # Register an Entra (AAD) app and configure SWA to use it for login.
 # Run once after 'make infra'. Requires no arguments — reads tenant + SWA name automatically.

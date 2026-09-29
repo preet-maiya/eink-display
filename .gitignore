@@ -27,3 +27,6 @@ build/
 .vscode/
 .idea/
 .claude/settings.local.json
+
+# PR staging device token (scripts/setup-gh-oidc.sh)
+.staging-device-token

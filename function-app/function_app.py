@@ -232,6 +232,12 @@ def _fresh_indoor(max_age_min: int = 60):
 
 @app.route(route="settings", auth_level=func.AuthLevel.ANONYMOUS, methods=["GET", "POST"])
 def settings_api(req: func.HttpRequest) -> func.HttpResponse:
+    # PR staging apps aren't behind SWA auth, so they require the device token instead.
+    if os.environ.get("SETTINGS_REQUIRE_TOKEN") == "1":
+        token = req.headers.get("x-device-token", "")
+        if not token or token != os.environ.get("DEVICE_TOKEN", ""):
+            return func.HttpResponse("Unauthorized", status_code=401)
+
     try:
         if req.method == "GET":
             data = table_ops.get_all_settings()

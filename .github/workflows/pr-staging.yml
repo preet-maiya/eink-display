@@ -1,0 +1,239 @@
+name: PR staging
+
+# Each open PR gets one Function App from the staging pool (infra/staging.bicep),
+# its own snapshot of the prod tables, and an SWA preview wired to that app.
+# Everything is torn down when the PR closes (merged or not).
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+    paths:
+      - "function-app/**"
+      - "settings-site/**"
+      - "scripts/download_fonts.py"
+      - "scripts/pr_tables.py"
+      - ".github/workflows/pr-staging.yml"
+
+permissions:
+  id-token: write       # OIDC token for azure/login
+  contents: read
+  pull-requests: write  # status comment
+
+env:
+  PR: ${{ github.event.pull_request.number }}
+  RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+  STORAGE_ACCOUNT_NAME: ${{ vars.STORAGE_ACCOUNT_NAME }}
+
+jobs:
+  # Serialized across all PRs so two PRs can't grab the same app
+  claim:
+    if: github.event.action != 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: pr-staging-pool
+      cancel-in-progress: false
+    outputs:
+      app: ${{ steps.claim.outputs.app }}
+    steps:
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Claim staging app
+        id: claim
+        run: |
+          mine=""; free=""
+          for app in ${{ vars.STAGING_FUNCTIONAPP_NAMES }}; do
+            pr=$(az functionapp show -g "$RG" -n "$app" --query "tags.pr" -o tsv)
+            if [[ "$pr" == "$PR" ]]; then mine=$app; break; fi
+            if [[ -z "$pr" && -z "$free" ]]; then free=$app; fi
+          done
+          app=${mine:-$free}
+          if [[ -z "$app" ]]; then
+            echo "::error::All staging apps are in use by other PRs. Close one and re-run this workflow."
+            exit 1
+          fi
+          if [[ -z "$mine" ]]; then
+            id=$(az functionapp show -g "$RG" -n "$app" --query id -o tsv)
+            az rest --method patch --url "https://management.azure.com${id}?api-version=2023-12-01" \
+              --body "{\"tags\": {\"role\": \"pr-staging\", \"pr\": \"$PR\"}}" -o none
+            echo "claimed $app for PR #$PR"
+          else
+            echo "reusing $app for PR #$PR"
+          fi
+          echo "app=$app" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: claim
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: pr-staging-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    env:
+      APP: ${{ needs.claim.outputs.app }}
+      HOST: ${{ needs.claim.outputs.app }}.azurewebsites.net
+      STAGING_DEVICE_TOKEN: ${{ secrets.STAGING_DEVICE_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download fonts
+        run: python3 scripts/download_fonts.py
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Snapshot is taken only the first time; later pushes keep the PR's data
+      - name: Snapshot prod tables
+        run: |
+          pip install --quiet azure-data-tables azure-identity
+          python3 scripts/pr_tables.py create "$PR"
+
+      - name: Point app at PR tables
+        run: |
+          az functionapp config appsettings set -g "$RG" -n "$APP" -o none --settings \
+            "TABLE_PREFIX=pr$PR" "DEVICE_TOKEN=$STAGING_DEVICE_TOKEN"
+          az functionapp start -g "$RG" -n "$APP" -o none
+
+      - name: Deploy
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ needs.claim.outputs.app }}
+          package: function-app
+          scm-do-build-during-deployment: true
+          enable-oryx-build: true
+
+      # Timer is disabled on staging; refresh once per push instead
+      - name: Refresh widget data
+        id: refresh
+        run: |
+          for i in $(seq 1 24); do
+            if out=$(curl -sf -X POST "https://$HOST/api/refresh?token=$STAGING_DEVICE_TOKEN"); then
+              echo "$out" | python3 -m json.tool
+              { echo "results<<EOF"; echo "$out" | python3 -c 'import json,sys; [print(f"{k:<10} {v}") for k,v in json.load(sys.stdin)["results"].items()]'; echo "EOF"; } >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$HOST/api/refresh?token=$STAGING_DEVICE_TOKEN")
+            echo "waiting for app to come up ($i, HTTP $code)..."; sleep 10
+          done
+          echo "::error::refresh never succeeded"; exit 1
+
+      - name: Point preview site at staging app
+        run: |
+          cat > settings-site/config.js <<EOF
+          window.API_BASE = "https://$HOST";
+          window.STAGING_LABEL = "PR #$PR → $APP";
+          EOF
+
+      # pull_request events deploy to a per-PR preview environment automatically
+      - name: Deploy settings site preview
+        id: swa
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          action: upload
+          app_location: settings-site
+          api_location: ""
+          output_location: ""
+          skip_app_build: true
+
+      - name: Allow preview origin (CORS)
+        env:
+          ORIGIN: ${{ steps.swa.outputs.static_web_app_url }}
+        run: |
+          have=$(az functionapp cors show -g "$RG" -n "$APP" --query "allowedOrigins" -o tsv)
+          grep -qxF "$ORIGIN" <<< "$have" || \
+            az functionapp cors add -g "$RG" -n "$APP" --allowed-origins "$ORIGIN" -o none
+
+      - name: Comment on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SITE: ${{ steps.swa.outputs.static_web_app_url }}
+          RESULTS: ${{ steps.refresh.outputs.results }}
+        run: |
+          body=$(cat <<EOF
+          <!-- pr-staging -->
+          ### Staging for ${{ github.event.pull_request.head.sha }}
+
+          | | |
+          |---|---|
+          | Settings site | $SITE |
+          | Function App | https://$HOST (\`$APP\`) |
+          | Render | \`https://$HOST/api/render?token=<STAGING_DEVICE_TOKEN>&widget=weather\` |
+          | Tables | \`pr${PR}settings\`, \`pr${PR}widgetcache\` (snapshot of prod) |
+
+          Refresh results:
+          \`\`\`
+          $RESULTS
+          \`\`\`
+          EOF
+          )
+          id=$(gh api "repos/${{ github.repository }}/issues/$PR/comments" \
+            --jq '[.[] | select(.body | startswith("<!-- pr-staging -->"))][0].id // empty')
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$id" -f body="$body" >/dev/null
+          else
+            gh pr comment "$PR" -R "${{ github.repository }}" --body "$body"
+          fi
+
+  teardown:
+    if: github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: pr-staging-pool
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Release staging app
+        run: |
+          for app in ${{ vars.STAGING_FUNCTIONAPP_NAMES }}; do
+            pr=$(az functionapp show -g "$RG" -n "$app" --query "tags.pr" -o tsv)
+            [[ "$pr" == "$PR" ]] || continue
+            az functionapp stop -g "$RG" -n "$app" -o none
+            az functionapp config appsettings delete -g "$RG" -n "$app" -o none \
+              --setting-names TABLE_PREFIX DEVICE_TOKEN
+            for o in $(az functionapp cors show -g "$RG" -n "$app" --query "allowedOrigins" -o tsv); do
+              az functionapp cors remove -g "$RG" -n "$app" --allowed-origins "$o" -o none
+            done
+            id=$(az functionapp show -g "$RG" -n "$app" --query id -o tsv)
+            az rest --method patch --url "https://management.azure.com${id}?api-version=2023-12-01" \
+              --body '{"tags": {"role": "pr-staging", "pr": ""}}' -o none
+            echo "released $app"
+          done
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Delete PR tables
+        run: |
+          pip install --quiet azure-data-tables azure-identity
+          python3 scripts/pr_tables.py delete "$PR"
+
+      - name: Close settings site preview
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.SWA_DEPLOYMENT_TOKEN }}
+          action: close
+          app_location: settings-site
