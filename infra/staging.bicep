@@ -91,6 +91,23 @@ resource stagingApps 'Microsoft.Web/sites@2023-12-01' = [for i in range(1, poolS
           value: '${prefix}-stg${i}'
         }
         {
+          // Zip deploy only runs Oryx (pip install requirements.txt) when these are set
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: '1'
+        }
+        {
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
+          name: 'BUILD_FLAGS'
+          value: 'UseExpressBuild'
+        }
+        {
+          name: 'XDG_CACHE_HOME'
+          value: '/tmp/.cache'
+        }
+        {
           name: 'STORAGE_ACCOUNT_NAME'
           value: storage.name
         }

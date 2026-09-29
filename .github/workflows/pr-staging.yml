@@ -125,7 +125,8 @@ jobs:
               { echo "results<<EOF"; echo "$out" | python3 -c 'import json,sys; [print(f"{k:<10} {v}") for k,v in json.load(sys.stdin)["results"].items()]'; echo "EOF"; } >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "waiting for app to come up ($i)..."; sleep 10
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "https://$HOST/api/refresh?token=$STAGING_DEVICE_TOKEN")
+            echo "waiting for app to come up ($i, HTTP $code)..."; sleep 10
           done
           echo "::error::refresh never succeeded"; exit 1
 
