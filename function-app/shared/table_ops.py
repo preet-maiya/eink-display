@@ -7,6 +7,14 @@ from azure.data.tables import TableServiceClient, UpdateMode
 
 _svc = None
 
+# PR staging apps set TABLE_PREFIX (e.g. "pr12") so they use their own
+# snapshot tables ("pr12settings", "pr12widgetcache") instead of prod's.
+_TABLE_PREFIX = os.environ.get("TABLE_PREFIX", "")
+
+
+def _table(name: str):
+    return _service().get_table_client(_TABLE_PREFIX + name)
+
 
 def _service() -> TableServiceClient:
     """Return a cached TableServiceClient.
@@ -34,7 +42,7 @@ def _service() -> TableServiceClient:
 
 def get_settings(key: str) -> dict:
     try:
-        client = _service().get_table_client("settings")
+        client = _table("settings")
         entity = client.get_entity(partition_key="config", row_key=key)
         return json.loads(entity.get("data", "{}"))
     except Exception:
@@ -42,7 +50,7 @@ def get_settings(key: str) -> dict:
 
 
 def set_settings(key: str, value) -> None:
-    client = _service().get_table_client("settings")
+    client = _table("settings")
     client.upsert_entity(
         {
             "PartitionKey": "config",
@@ -62,7 +70,7 @@ def get_all_settings() -> dict:
 
 def get_cache(widget: str) -> dict:
     try:
-        client = _service().get_table_client("widgetcache")
+        client = _table("widgetcache")
         entity = client.get_entity(partition_key="cache", row_key=widget)
         return {
             "data": json.loads(entity.get("data", "null")),
@@ -73,7 +81,7 @@ def get_cache(widget: str) -> dict:
 
 
 def set_cache(widget: str, data) -> None:
-    client = _service().get_table_client("widgetcache")
+    client = _table("widgetcache")
     client.upsert_entity(
         {
             "PartitionKey": "cache",
@@ -87,7 +95,7 @@ def set_cache(widget: str, data) -> None:
 
 def get_rotation_state(device_id: str) -> int:
     try:
-        client = _service().get_table_client("settings")
+        client = _table("settings")
         entity = client.get_entity(partition_key="state", row_key=device_id)
         return int(entity.get("widget_index", 0))
     except Exception:
@@ -95,7 +103,7 @@ def get_rotation_state(device_id: str) -> int:
 
 
 def set_rotation_state(device_id: str, index: int) -> None:
-    client = _service().get_table_client("settings")
+    client = _table("settings")
     client.upsert_entity(
         {
             "PartitionKey": "state",

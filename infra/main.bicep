@@ -79,7 +79,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// ---------- Function App (Consumption plan) ----------
+// ---------- Function App (B1 Basic dedicated plan) ----------
 
 resource hostingPlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: planName
@@ -106,6 +106,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'PYTHON|3.11'
+      // Dedicated plan unloads idle apps without this, and the timer trigger stops firing
+      alwaysOn: true
       appSettings: [
         {
           name: 'AzureWebJobsStorage'

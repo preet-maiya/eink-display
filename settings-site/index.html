@@ -378,7 +378,20 @@
 
 </div>
 
+<!-- Prod: empty API_BASE (same-origin /api via SWA linked backend).
+     PR previews: overwritten by CI to point at that PR's staging Function App. -->
+<script src="config.js"></script>
 <script>
+const API_BASE = window.API_BASE || "";
+const STAGING_LABEL = window.STAGING_LABEL || "";
+
+// Staging apps aren't behind SWA auth and require the device token on every call.
+function apiFetch(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (API_BASE) headers["x-device-token"] = document.getElementById("preview-token").value.trim();
+  return fetch(API_BASE + path, { ...opts, headers });
+}
+
 const WIDGET_META = {
   weather:   { label: "Weather" },
   calendar:  { label: "Calendar" },
@@ -399,11 +412,20 @@ function checkAuth() {
   document.getElementById("app").style.display = "";
   const tok = localStorage.getItem("previewToken");
   if (tok) document.getElementById("preview-token").value = tok;
+  if (STAGING_LABEL) {
+    const b = document.createElement("div");
+    b.textContent = "STAGING · " + STAGING_LABEL + " · paste the staging device token below";
+    b.style.cssText = "position:sticky;top:0;z-index:99;background:#000;color:#fff;font:600 12px monospace;padding:6px 10px;text-align:center";
+    document.body.prepend(b);
+  }
   loadSettings();
 }
 
+let tokenTimer = null;
 function saveToken() {
   localStorage.setItem("previewToken", document.getElementById("preview-token").value.trim());
+  // Staging settings load needs the token, so retry once typing stops.
+  if (API_BASE) { clearTimeout(tokenTimer); tokenTimer = setTimeout(loadSettings, 600); }
 }
 
 // ── Nav ───────────────────────────────────────────────────────────────────
@@ -422,7 +444,7 @@ async function loadSettings() {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const r = await fetch("/api/settings", { signal: ctrl.signal });
+    const r = await apiFetch("/api/settings", { signal: ctrl.signal });
     clearTimeout(t);
     if (!r.ok) throw new Error(r.status);
     settings = await r.json();
@@ -526,7 +548,7 @@ async function saveSection(key, data, statusId) {
   const el = document.getElementById(statusId);
   el.textContent = "Saving…"; el.className = "status";
   try {
-    const r = await fetch("/api/settings", {
+    const r = await apiFetch("/api/settings", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ [key]: data }),
     });
@@ -823,7 +845,7 @@ async function runRefresh() {
   statusEl.textContent = "Refreshing…"; statusEl.className = "status";
   resultsEl.style.display = "none";
   try {
-    const r = await fetch("/api/refresh?token=" + encodeURIComponent(token), { method: "POST" });
+    const r = await apiFetch("/api/refresh?token=" + encodeURIComponent(token), { method: "POST" });
     const body = await r.json().catch(() => ({}));
     if (!r.ok || body.ok === false) throw new Error(body.error || r.status);
     statusEl.textContent = "Done ✓"; statusEl.className = "status ok";
@@ -847,7 +869,7 @@ function loadPreview(advance) {
   hint.textContent = "Loading…";
   img.style.display = "none"; ph.style.display = "flex";
   img.onload = () => { ph.style.display = "none"; img.style.display = "block"; hint.textContent = "Updated " + new Date().toLocaleTimeString(); };
-  img.src = "/api/render?token=" + encodeURIComponent(token) + "&_t=" + Date.now();
+  img.src = API_BASE + "/api/render?token=" + encodeURIComponent(token) + "&_t=" + Date.now();
 }
 
 function previewError() {
